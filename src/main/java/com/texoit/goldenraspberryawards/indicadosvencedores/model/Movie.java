@@ -7,11 +7,6 @@ import org.hibernate.annotations.GenericGenerator;
 import org.hibernate.annotations.Type;
 import org.springframework.data.annotation.Id;
 
-/**
- * @author Alfredo Janke on 09/03/2022
- */
-
-
 @Entity
 @Table(name = "movie")
 @Data

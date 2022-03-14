@@ -8,12 +8,9 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import org.apache.commons.lang3.StringUtils;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
-
-/**
- * @author Alfredo Janke on 09/03/2022
- */
 
 @Service
 public class WinnerMixMaxIntervalsService {
@@ -23,18 +20,17 @@ public class WinnerMixMaxIntervalsService {
 
     public MinMaxWinnerIntervalsDTO calculateWinnerMinMaxIntervals() {
 
-        List<MinMaxWinnerInterval> min = new ArrayList<>();
-        List<MinMaxWinnerInterval> max = new ArrayList<>();
-
         List<Movie> winners = movieRepository.findByWinnerTrueOrderByProducersAscYearAsc();
 
         Map<String, List<Movie>> moviesByProducers = createMapWinnerMoviesByProducers(winners);
 
-        return calculateIntervals(min, max, moviesByProducers);
+        return calculateIntervals(moviesByProducers);
     }
 
-    private MinMaxWinnerIntervalsDTO calculateIntervals(List<MinMaxWinnerInterval> min, List<MinMaxWinnerInterval> max,
-        Map<String, List<Movie>> moviesByProducers) {
+    private MinMaxWinnerIntervalsDTO calculateIntervals(Map<String, List<Movie>> moviesByProducers) {
+
+        List<MinMaxWinnerInterval> min = new ArrayList<>();
+        List<MinMaxWinnerInterval> max = new ArrayList<>();
 
         moviesByProducers.keySet()
             .forEach(key -> {
@@ -43,9 +39,9 @@ public class WinnerMixMaxIntervalsService {
                 if (movies.size() < 2) {
                     return;
                 }
-                calculateMinIntervals(min, key, movies);
 
-                calculateMaxIntervals(max, key, movies);
+                calculateIntervals(min, max, key, movies);
+
             });
 
         return MinMaxWinnerIntervalsDTO.builder()
@@ -54,69 +50,75 @@ public class WinnerMixMaxIntervalsService {
             .build();
     }
 
-    private void calculateMaxIntervals(List<MinMaxWinnerInterval> max, String key, List<Movie> movies) {
-        int maxInterval = Integer.MIN_VALUE;
-        int maxLastYear = 0;
-        int maxPreviousWin = 0;
-        int maxFollowingWin = 0;
+    private void calculateIntervals(List<MinMaxWinnerInterval> min, List<MinMaxWinnerInterval> max, String producer,
+        List<Movie> movies) {
 
-        for (Movie movie : movies) {
-
-            if (maxLastYear != 0 && movie.getYear() - maxLastYear > maxInterval) {
-                maxInterval = movie.getYear() - maxLastYear;
-                maxPreviousWin = maxLastYear;
-                maxFollowingWin = movie.getYear();
-                maxLastYear = movie.getYear();
-                continue;
-            }
-            maxLastYear = movie.getYear();
-        }
-
-        MinMaxWinnerInterval maxAward = MinMaxWinnerInterval.builder()
-            .interval(maxInterval)
-            .previousWin(maxPreviousWin)
-            .followingWin(maxFollowingWin)
-            .producer(key)
-            .build();
-
-        max.add(maxAward);
-    }
-
-    private void calculateMinIntervals(List<MinMaxWinnerInterval> min, String key, List<Movie> movies) {
         int minInterval = Integer.MAX_VALUE;
-        int minLastYear = 0;
-        int minPreviousWin = 0;
-        int minFollowingWin = 0;
+        int maxInterval = Integer.MIN_VALUE;
+
+        MinMaxWinnerInterval minAward = null;
+        MinMaxWinnerInterval maxAward = null;
+
+        int lastYear = 0;
 
         for (Movie movie : movies) {
-            if (minLastYear != 0 && movie.getYear() - minLastYear < minInterval) {
-                minInterval = movie.getYear() - minLastYear;
-                minPreviousWin = minLastYear;
-                minFollowingWin = movie.getYear();
-                minLastYear = movie.getYear();
+            if (lastYear == 0) {
+                lastYear = movie.getYear();
                 continue;
             }
-            minLastYear = movie.getYear();
+
+            if (movie.getYear() - lastYear < minInterval) {
+                minInterval = Math.abs(movie.getYear() - lastYear);
+                minAward = MinMaxWinnerInterval.builder()
+                    .producer(producer)
+                    .interval(Math.abs(movie.getYear() - lastYear))
+                    .previousWin(lastYear)
+                    .followingWin(movie.getYear())
+                    .build();
+            } else
+
+            if (movie.getYear() - lastYear > maxInterval) {
+                maxInterval = Math.abs(movie.getYear() - lastYear);
+                maxAward = MinMaxWinnerInterval.builder()
+                    .producer(producer)
+                    .interval(Math.abs(movie.getYear() - lastYear))
+                    .previousWin(lastYear)
+                    .followingWin(movie.getYear())
+                    .build();
+            }
+
+            lastYear = movie.getYear();
         }
 
-        MinMaxWinnerInterval minAward = MinMaxWinnerInterval.builder()
-            .interval(minInterval)
-            .previousWin(minPreviousWin)
-            .followingWin(minFollowingWin)
-            .producer(key)
-            .build();
+        if (minAward != null) {
+            min.add(minAward);
+        }
 
-        min.add(minAward);
+        if (maxAward != null) {
+            max.add(maxAward);
+        }
     }
 
     private Map<String, List<Movie>> createMapWinnerMoviesByProducers(List<Movie> winners) {
 
         Map<String, List<Movie>> moviesByProducers = new HashMap<>();
         winners.forEach(winner -> {
-            moviesByProducers.computeIfAbsent(winner.getProducers(), k -> new ArrayList<>());
 
-            List<Movie> movies = moviesByProducers.get(winner.getProducers());
-            movies.add(winner);
+            String[] producers = winner.getProducers()
+                .split(", |and");
+
+            for (String producer : producers) {
+
+                String producerTrimmed = producer.trim();
+
+                if (StringUtils.isNotBlank(producerTrimmed)) {
+
+                    moviesByProducers.computeIfAbsent(producerTrimmed, k -> new ArrayList<>());
+
+                    List<Movie> movies = moviesByProducers.get(producerTrimmed);
+                    movies.add(winner);
+                }
+            }
         });
         return moviesByProducers;
     }
